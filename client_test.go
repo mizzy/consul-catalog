@@ -13,24 +13,9 @@ func testClient(t *testing.T) *Client {
 	return client
 }
 
-func TestServices(t *testing.T) {
-	client := testClient(t)
-	meta, data, err := client.GetServices()
-
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if meta.ModifyIndex == 0 {
-		t.Fatalf("unexpected value: %#v", meta)
-	}
-	if data["consul"] != nil {
-		t.Fatalf("unexpected return: %v", data)
-	}
-}
-
 func TestService(t *testing.T) {
 	client := testClient(t)
-	meta, data, err := client.GetService("consul")
+	meta, nodes, err := client.GetService("consul")
 
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -39,12 +24,12 @@ func TestService(t *testing.T) {
 		t.Fatalf("unexpected value: %#v", meta)
 	}
 
-	service     := data[0].(map[string]interface{})
+	node        := nodes[0]
 	hostname, _ := os.Hostname()
-	if service["Node"] != hostname {
-		t.Fatalf("unexpected return: %v", service["Node"])
+	if node.Node != hostname {
+		t.Fatalf("unexpected return: %v", node.Node)
 	}
-	if service["ServiceName"] != "consul" {
-		t.Fatalf("unexpected return: %v", service["ServiceName"])
+	if node.ServiceName != "consul" {
+		t.Fatalf("unexpected return: %v", node.ServiceName)
 	}
 }

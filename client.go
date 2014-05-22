@@ -37,6 +37,16 @@ type CatalogMeta struct {
 	ModifyIndex uint64
 }
 
+type Node struct {
+	Node        string
+	Address     string
+	ServiceID   string
+	ServiceName string
+	ServiceTags []string
+	ServicePort int
+}
+
+type Nodes []*Node
 
 // NewClient returns a new
 func NewClient(config *Config) (*Client, error) {
@@ -54,20 +64,15 @@ func DefaultConfig() *Config {
 	}
 }
 
-// GetServices is used to lookup services
-func (c *Client) GetServices() (*CatalogMeta, map[string]interface{}, error) {
-	meta, data, err := c.Get("services", "", 0)
-	return meta, data.(map[string]interface{}), err
-}
-
-func (c *Client) GetService(service string) (*CatalogMeta, []interface{}, error) {
-	meta, data, err := c.Get("service", service, 0)
-	return meta, data.([]interface{}), err
+// Get nodes that have a service
+func (c *Client) GetService(service string) (*CatalogMeta, Nodes, error) {
+	meta, nodes, err := c.Get("service", service, 0)
+	return meta, nodes, err
 }
 
 // GET
-func (c *Client) Get(path0 string, path1 string, waitIndex uint64) (*CatalogMeta, interface{}, error) {
-	url := c.pathURL(path0, path1)
+func (c *Client) Get(endpoint string, path string, waitIndex uint64) (*CatalogMeta, Nodes, error) {
+	url := c.pathURL(endpoint, path)
 	query := url.Query()
 
 	if waitIndex > 0 {
@@ -105,12 +110,12 @@ func (c *Client) Get(path0 string, path1 string, waitIndex uint64) (*CatalogMeta
 	}
 
 	dec := json.NewDecoder(resp.Body)
-	var data interface{}
-	if err := dec.Decode(&data); err != nil {
+	var out Nodes
+	if err := dec.Decode(&out); err != nil {
 		return nil, nil, err
 	}
 
-	return meta, data, nil
+	return meta, out, nil
 }
 
 // path is used to generate the HTTP path for a request
