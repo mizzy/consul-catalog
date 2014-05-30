@@ -64,7 +64,7 @@ func TestService(tt *testing.T) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		if meta := nodes.Meta(); meta.ModifyIndex == 0 {
+		if meta := nodes.Meta(); meta.ModifyIndex != 1 {
 			t.Fatalf("unexpected value: %#v", meta)
 		}
 
@@ -86,7 +86,7 @@ func TestNonExistentService(tt *testing.T) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		if meta := nodes.Meta(); meta.ModifyIndex == 0 {
+		if meta := nodes.Meta(); meta.ModifyIndex != 1 {
 			t.Fatalf("unexpected value: %#v", meta)
 		}
 
@@ -105,7 +105,7 @@ func TestDatacenters(tt *testing.T) {
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		if meta := dcs.Meta(); meta.ModifyIndex == 0 {
+		if meta := dcs.Meta(); meta.ModifyIndex != 1 {
 			t.Fatalf("unexpected value: %#v", meta)
 		}
 
