@@ -16,7 +16,7 @@ type Config struct {
 	Address string
 
 	// Datacenter to use. If not provided, the default agent datacenter is used.
-	Datacenter string
+	Datacenter Datacenter
 
 	// HTTPClient is the client to use. Default will be
 	// used if not provided.
@@ -32,9 +32,58 @@ type Client struct {
 	config Config
 }
 
-// CatalogMeta provides meta data about a query
+// CatalogResponse is the interface enveloping the whole set of response types
+// The only common operation is Meta() and IsValid() methods
+type CatalogResponse interface {
+	// IsValid tells if the response was an empty one (where 404 was returned)
+	// so you have a valid CatalogMeta, but no real result
+	IsValid() bool
+
+	// Meta returns the CatalogMeta object
+	Meta() *CatalogMeta
+
+	makeInvalid()
+}
+
 type CatalogMeta struct {
 	ModifyIndex uint64
+}
+
+func (c *CatalogMeta) Meta() *CatalogMeta {
+	return c
+}
+
+func (c *CatalogMeta) Parse(resp *http.Response) (error) {
+	// Decode the CatalogMeta
+	index, err := strconv.ParseUint(resp.Header.Get("X-Consul-Index"), 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse X-Consul-Index: %v", err)
+	}
+
+	c.ModifyIndex = index
+	return nil
+}
+
+type Datacenter string
+type Datacenters struct {
+	validResponse
+	*CatalogMeta
+	centers []Datacenter
+}
+
+func (d Datacenter) String() string {
+		return string(d)
+}
+
+func (d *Datacenters) Names() []Datacenter {
+	return d.centers
+}
+
+func (d *Datacenters) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &d.centers); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Node struct {
@@ -46,7 +95,32 @@ type Node struct {
 	ServicePort int
 }
 
-type Nodes []*Node
+type validResponse bool
+
+func (v *validResponse) makeInvalid() {
+	*v = false
+}
+
+func (v validResponse) IsValid() bool {
+	return bool(v)
+}
+
+type Nodes struct {
+	validResponse
+	*CatalogMeta
+	nodes []*Node
+}
+
+func (n *Nodes) UnmarshalJSON(data []byte) error {
+	if err := json.Unmarshal(data, &n.nodes); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *Nodes) NodeAt(i int) *Node {
+	return n.nodes[i]
+}
 
 // NewClient returns a new
 func NewClient(config *Config) (*Client, error) {
@@ -65,15 +139,76 @@ func DefaultConfig() *Config {
 }
 
 // Get nodes that have a service
-func (c *Client) GetService(service string) (*CatalogMeta, Nodes, error) {
-	meta, nodes, err := c.Get("service", service, 0)
-	return meta, nodes, err
+func (c *Client) GetService(service string) (*Nodes, error) {
+	r := &Nodes{ true, &CatalogMeta{}, []*Node{} }
+	err := c.request(
+		c.pathURL(0, "service", service),
+		r,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
-// GET
-func (c *Client) Get(endpoint string, path string, waitIndex uint64) (*CatalogMeta, Nodes, error) {
-	url := c.pathURL(endpoint, path)
+func (c *Client) GetDatacenters() (*Datacenters, error) {
+	r := &Datacenters{ true, &CatalogMeta{}, []Datacenter{} }
+	err := c.request(
+		c.pathURL(0, "datacenters"),
+		r,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (c *Client) request(url *url.URL, r CatalogResponse) error { 
+	req := &http.Request{
+		Method: "GET",
+		URL:    url,
+	}
+
+	resp, err := c.config.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if err := r.Meta().Parse(resp); err != nil {
+		return err
+	}
+
+	// Ensure status code is 404 or 200
+	if resp.StatusCode == 404 {
+		r.makeInvalid()
+		return nil
+	}
+
+  if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected response code: %d", resp.StatusCode)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+	if err = dec.Decode(r); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// path is used to generate the HTTP path for a request
+func (c *Client) pathURL(waitIndex uint64, paths ...string) *url.URL {
+	url := &url.URL{
+		Scheme: "http",
+		Host:   c.config.Address,
+		Path:   "/v1/catalog/" + path.Join(paths...),
+	}
 	query := url.Query()
+
+	if c.config.Datacenter != "" {
+		query.Set("dc", c.config.Datacenter.String())
+		url.RawQuery = query.Encode()
+	}
 
 	if waitIndex > 0 {
 		query.Set("index", strconv.FormatUint(waitIndex, 10))
@@ -83,51 +218,6 @@ func (c *Client) Get(endpoint string, path string, waitIndex uint64) (*CatalogMe
 		query.Set("wait", waitMsec)
 	}
 	if len(query) > 0 {
-		url.RawQuery = query.Encode()
-	}
-	req := http.Request{
-		Method: "GET",
-		URL:    url,
-	}
-	resp, err := c.config.HTTPClient.Do(&req)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Decode the CatalogMeta
-	meta := &CatalogMeta{}
-	index, err := strconv.ParseUint(resp.Header.Get("X-Consul-Index"), 10, 64)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse X-Consul-Index: %v", err)
-	}
-	meta.ModifyIndex = index
-
-	// Ensure status code is 404 or 200
-	if resp.StatusCode == 404 {
-		return meta, nil, nil
-	} else if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("unexpected response code: %d", resp.StatusCode)
-	}
-
-	dec := json.NewDecoder(resp.Body)
-	var out Nodes
-	if err := dec.Decode(&out); err != nil {
-		return nil, nil, err
-	}
-
-	return meta, out, nil
-}
-
-// path is used to generate the HTTP path for a request
-func (c *Client) pathURL(path0 string, path1 string) *url.URL {
-	url := &url.URL{
-		Scheme: "http",
-		Host:   c.config.Address,
-		Path:   path.Join("/v1/catalog/", path0, path1),
-	}
-	if c.config.Datacenter != "" {
-		query := url.Query()
-		query.Set("dc", c.config.Datacenter)
 		url.RawQuery = query.Encode()
 	}
 	return url
