@@ -1,13 +1,13 @@
 package consulcatalog
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 	"strconv"
 	"time"
-	"encoding/json"
 )
 
 // Config is used to configure the creation of a client
@@ -53,7 +53,7 @@ func (c *CatalogMeta) Meta() *CatalogMeta {
 	return c
 }
 
-func (c *CatalogMeta) Parse(resp *http.Response) (error) {
+func (c *CatalogMeta) Parse(resp *http.Response) error {
 	// Decode the CatalogMeta
 	index, err := strconv.ParseUint(resp.Header.Get("X-Consul-Index"), 10, 64)
 	if err != nil {
@@ -72,7 +72,7 @@ type Datacenters struct {
 }
 
 func (d Datacenter) String() string {
-		return string(d)
+	return string(d)
 }
 
 func (d *Datacenters) Names() []Datacenter {
@@ -140,7 +140,7 @@ func DefaultConfig() *Config {
 
 // Get nodes that have a service
 func (c *Client) GetService(service string) (*Nodes, error) {
-	r := &Nodes{ true, &CatalogMeta{}, []*Node{} }
+	r := &Nodes{true, &CatalogMeta{}, []*Node{}}
 	err := c.request(
 		c.pathURL(0, "service", service),
 		r,
@@ -152,7 +152,7 @@ func (c *Client) GetService(service string) (*Nodes, error) {
 }
 
 func (c *Client) GetDatacenters() (*Datacenters, error) {
-	r := &Datacenters{ true, &CatalogMeta{}, []Datacenter{} }
+	r := &Datacenters{true, &CatalogMeta{}, []Datacenter{}}
 	err := c.request(
 		c.pathURL(0, "datacenters"),
 		r,
@@ -163,7 +163,7 @@ func (c *Client) GetDatacenters() (*Datacenters, error) {
 	return r, nil
 }
 
-func (c *Client) request(url *url.URL, r CatalogResponse) error { 
+func (c *Client) request(url *url.URL, r CatalogResponse) error {
 	req := &http.Request{
 		Method: "GET",
 		URL:    url,
@@ -184,7 +184,7 @@ func (c *Client) request(url *url.URL, r CatalogResponse) error {
 		return nil
 	}
 
-  if resp.StatusCode != 200 {
+	if resp.StatusCode != 200 {
 		return fmt.Errorf("unexpected response code: %d", resp.StatusCode)
 	}
 
@@ -222,4 +222,3 @@ func (c *Client) pathURL(waitIndex uint64, paths ...string) *url.URL {
 	}
 	return url
 }
-

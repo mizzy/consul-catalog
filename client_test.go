@@ -53,7 +53,7 @@ func RunTestWithServer(t *testing.T, f func(xt *T)) {
 		t.Fatalf("err: %v", err)
 	}
 
-	f(&T { t, server, client })
+	f(&T{t, server, client})
 }
 
 func TestService(tt *testing.T) {
@@ -109,7 +109,7 @@ func TestDatacenters(tt *testing.T) {
 			t.Fatalf("unexpected value: %#v", meta)
 		}
 
-		if !reflect.DeepEqual(dcs.Names(), []Datacenter { "dc1", "dc2" }) {
+		if !reflect.DeepEqual(dcs.Names(), []Datacenter{"dc1", "dc2"}) {
 			t.Fatalf("unexpected value: %#v", dcs)
 		}
 	})
